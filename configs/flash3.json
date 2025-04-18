@@ -1,0 +1,4 @@
+{
+    "attn_impl": "flash_attention_3",
+    "max_seq_len": 2048
+  }

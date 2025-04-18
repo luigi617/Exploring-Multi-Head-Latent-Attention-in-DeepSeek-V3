@@ -1,0 +1,4 @@
+{
+    "attn_impl": "absorb",
+    "max_seq_len": 2048
+}
