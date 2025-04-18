@@ -1,4 +1,4 @@
 {
-    "attn_impl": "torch",
+    "attn_impl": "naive",
     "max_seq_len": 2048
   }

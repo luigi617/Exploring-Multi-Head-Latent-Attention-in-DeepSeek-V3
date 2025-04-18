@@ -1,0 +1,10 @@
+{
+    "max_seq_len": 2048,
+    "attn_impls": [
+      "naive",
+      "sdpa",
+      "flash_attention_2",
+      "paged",
+      "mha"
+    ]
+  }

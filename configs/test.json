@@ -1,0 +1,8 @@
+{
+    "max_seq_len": 2048,
+    "attn_impls": [
+      "eager",
+      "sdpa",
+      "flash_attention_2"
+    ]
+  }
