@@ -1,17 +1,17 @@
 import torch
 import math
 class PagedAttention(torch.nn.Module):
-    def __init__(self, hidden_size: int, num_heads: int, block_size: int = 64):
+    def __init__(self, config, block_size: int = 64):
         super().__init__()
-        self.hidden_size = hidden_size
-        self.num_heads = num_heads
-        self.head_dim = hidden_size // num_heads
+        self.hidden_size = config.hidden_size
+        self.num_heads = config.num_attention_heads
+        self.head_dim = self.hidden_size // self.num_heads
         self.block_size = block_size
         
-        self.q_proj = torch.nn.Linear(hidden_size, hidden_size)
-        self.k_proj = torch.nn.Linear(hidden_size, hidden_size)
-        self.v_proj = torch.nn.Linear(hidden_size, hidden_size)
-        self.o_proj = torch.nn.Linear(hidden_size, hidden_size)
+        self.q_proj = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.k_proj = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.v_proj = torch.nn.Linear(self.hidden_size, self.hidden_size)
+        self.o_proj = torch.nn.Linear(self.hidden_size, self.hidden_size)
 
     def forward(self, hidden_states, attention_mask=None):
         q = self.q_proj(hidden_states)
