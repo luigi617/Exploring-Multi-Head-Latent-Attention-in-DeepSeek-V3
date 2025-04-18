@@ -5,6 +5,7 @@ from transformers import (AutoTokenizer, AutoModelForCausalLM,
 from peft import LoraConfig, get_peft_model
 from datasets import load_dataset
 
+from torch_profiling import TorchProfilerCallback
 # ------------------------------------------------------------------
 #  load cfg / model / tokenizer
 # ------------------------------------------------------------------
@@ -13,7 +14,7 @@ cfg = json.load(open(cfg_file))
 
 bnb_cfg = BitsAndBytesConfig(load_in_4bit=True,
                              bnb_4bit_quant_type="nf4",
-                             bnb_4bit_compute_dtype=torch.bfloat16,
+                             bnb_4bit_compute_dtype=torch.float16,
                              bnb_4bit_use_double_quant=True)
 
 tok = AutoTokenizer.from_pretrained(model_id, use_fast=True)
@@ -35,18 +36,20 @@ model = AutoModelForCausalLM.from_pretrained(model_id,
                                              device_map="auto")
 patch(model, patch_attn)
 
-lora_cfg = LoraConfig(r=64, lora_alpha=16, target_modules=["q_proj", "v_proj"])
+lora_cfg = LoraConfig(r=32, lora_alpha=16, target_modules=["q_proj", "v_proj"])
 model = get_peft_model(model, lora_cfg)
 
 # ------------------------------------------------------------------
 #  dataset (leave *padding* to the collator)
 # ------------------------------------------------------------------
-ds = load_dataset("tatsu-lab/alpaca", split="train[:5000]")
+ds = load_dataset("Open-Orca/OpenOrca", split="train[:5000]")
 max_len = cfg.get("max_seq_len", model.config.max_position_embeddings)
 
 def fmt(ex):
-    txt = "\n".join([ex["instruction"], ex["input"]])
-    return tok(txt, truncation=True, max_length=max_len)
+    # build a simple instruction‑follow prompt
+    instr = (ex["system_prompt"] + "\n" if ex["system_prompt"] else "") + ex["question"]
+    text = instr.strip() + "\n" + ex["response"].strip()
+    return tok(text, truncation=True, max_length=max_len)
 
 train_set = ds.map(fmt, remove_columns=ds.column_names)
 
@@ -60,16 +63,22 @@ data_collator = DataCollatorForLanguageModeling(
 # ------------------------------------------------------------------
 #  training
 # ------------------------------------------------------------------
-args = TrainingArguments(out_dir,
-                         per_device_train_batch_size=4,
-                         gradient_accumulation_steps=8,
-                         bf16=True,
-                         num_train_epochs=1,
-                         logging_steps=10,
-                         save_total_limit=1)
+
+
+args = TrainingArguments(
+    output_dir=out_dir,
+    bf16=False,                              # we use pure fp16
+    fp16=True,
+    per_device_train_batch_size=1,           # 🢂 tiny micro‑batch
+    gradient_accumulation_steps=32,          # global batch 32
+    num_train_epochs=1,
+    logging_steps=10,
+    save_total_limit=1,
+)
 
 Trainer(model=model,
         args=args,
         train_dataset=train_set,
-        data_collator=data_collator  # ← NEW
+        data_collator=data_collator,
+        callbacks=[TorchProfilerCallback(wait=2, warmup=2, active=8)]
         ).train()
