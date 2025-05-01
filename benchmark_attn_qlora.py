@@ -8,7 +8,6 @@ USAGE
 -----
 python benchmark_attn_qlora_v2.py deepseek-ai/deepseek-coder-1.3b-base configs/comparison.json runs/bench
 """
-from __future__ import annotations
 import argparse, os, json, time, gc, math, random, csv
 from typing import Dict, List
 
@@ -33,13 +32,15 @@ from attentions.pa import PagedAttention
 from attentions.mla import MultiHeadLatentAttention
 
 
+train_size = 10
+val_size = 5
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("model_id")
     p.add_argument("cfg_file")
     p.add_argument("out_dir")
     return p.parse_args()
-
 
 def get_attention_class(model: torch.nn.Module) -> type:
     """Find the first Attention class in a model to use as replacement template."""
@@ -48,14 +49,11 @@ def get_attention_class(model: torch.nn.Module) -> type:
             return module.__class__
     raise ValueError("Could not find an Attention class in the model")
 
-
-
 def perplexity(loss: float) -> float:
     try:
         return math.exp(loss)
     except OverflowError:
         return float("inf")
-
 
 def unload_model(model: torch.nn.Module) -> None:
     """Properly unload model without moving quantized layers to CPU"""
@@ -112,6 +110,7 @@ def replace_attention_with_quantized(
         raise ValueError(f"Unsupported attention: {impl}")
 
     return custom_attn
+
 def main():
     args = parse_args()
     cfg = json.load(open(args.cfg_file))
@@ -136,8 +135,8 @@ def main():
         tok.pad_token_id = tok.eos_token_id
     tok.pad_token = tok.pad_token or tok.eos_token
 
-    train_ds = load_dataset("Open-Orca/OpenOrca", split="train[:5000]")
-    val_ds   = load_dataset("Open-Orca/OpenOrca", split="train[5000:5500]")
+    train_ds = load_dataset("Open-Orca/OpenOrca", split=f"train[:{train_size}]")
+    val_ds   = load_dataset("Open-Orca/OpenOrca", split=f"train[{train_size}:{train_size+val_size}]")
     raw_val_ds = val_ds  # keep raw for generation
 
     max_len = cfg.get("max_seq_len", tok.model_max_length)
@@ -149,6 +148,8 @@ def main():
     train_set = train_ds.map(tokenize_fn, remove_columns=train_ds.column_names)
     val_set   = val_ds.map(tokenize_fn,   remove_columns=val_ds.column_names)
 
+    print(train_set)
+    print(val_set)
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tok, mlm=False, pad_to_multiple_of=8
     )
