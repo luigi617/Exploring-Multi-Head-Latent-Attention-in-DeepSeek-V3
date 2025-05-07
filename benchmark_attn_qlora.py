@@ -35,8 +35,8 @@ from attentions.mla import MultiHeadLatentAttention
 
 # ----------------------------------------------------------------------------------------------------------------------
 # tiny constants so the script stays quick-n-dirty for a demo run
-TRAIN_SIZE = 10
-VAL_SIZE   = 5
+TRAIN_SIZE = 100
+VAL_SIZE   = 20
 SEED       = 42
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -98,31 +98,30 @@ def greedy_gen_tokens_per_s(
 
     return round(total_tokens / max(total_time, 1e-6), 2)
 
-
 def replace_attention_with_quantized(
     orig_attn: torch.nn.Module,
     impl: str,
-    cfg: Any,
+    cfg,
 ) -> torch.nn.Module:
-    """
-    Instantiate a custom attention layer and *share* the already-quantised
-    Q/K/V/O Linear4bit projections from `orig_attn`.
-    """
     if impl == "mla":
-        custom_attn = MultiHeadLatentAttention(cfg)
-        # MLA has different projection names – keep its defaults.
+        # Initialize MLA with random weights (LoRA will train adapters)
+        custom_attn = MultiHeadLatentAttention(
+            cfg,
+            num_latents=getattr(cfg, "num_latents", 64),
+            dropout=cfg.attention_dropout,
+            quantization="4bit",  # Match base model's 4-bit config
+        )
+        # No weight copying - MLA starts fresh
     elif impl == "paged":
-        custom_attn = PagedAttention(cfg, block_size=64)
-        # Re-use projections so we do not introduce extra parameters.
-        custom_attn.q_proj = orig_attn.q_proj
-        custom_attn.k_proj = orig_attn.k_proj
-        custom_attn.v_proj = orig_attn.v_proj
-        custom_attn.o_proj = orig_attn.o_proj
+        custom_attn = PagedAttention(
+            cfg,
+            block_size=64,
+            quantization="4bit",
+        )
     else:
         raise ValueError(f"Unsupported attention implementation: {impl}")
 
     return custom_attn
-
 
 # ---------- main ------------------------------------------------------------------------------------------------
 
