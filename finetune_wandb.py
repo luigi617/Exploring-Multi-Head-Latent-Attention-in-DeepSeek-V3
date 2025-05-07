@@ -121,7 +121,6 @@ def main():
             else:
                 model.config.attn_implementation = impl
 
-            # attach adapters if needed
             if adapter in {"lora", "qlora"}:
                 target_modules = [
                     "to_q_latent","to_k_token","to_v_token","out_latent",
@@ -135,7 +134,6 @@ def main():
 
             model.gradient_checkpointing_enable()
 
-            # trainer
             trainer = Trainer(
                 model=model,
                 args=TrainingArguments(
@@ -147,7 +145,7 @@ def main():
                     logging_steps=10,
                     save_total_limit=1,
                     report_to="none",
-                    evaluation_strategy="no",
+                    #evaluation_strategy="no",
                     gradient_checkpointing=True,
                     fp16=False,
                 ),
@@ -181,7 +179,6 @@ def main():
 
             unload(model)
 
-    # dump summary
     json.dump(results, open(os.path.join(args.out_dir,"bench_results.json"),"w"), indent=2)
     print("\n== SPEED BENCHMARK ==")
     for r in results:
