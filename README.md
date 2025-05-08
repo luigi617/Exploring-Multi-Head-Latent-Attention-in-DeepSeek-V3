@@ -32,7 +32,7 @@ All experiments use **DeepSeek‑Coder‑1.3B** and a slice of **OpenOrca** for 
 
 ## ⚙️ Setup & Requirements
 ```bash
-# 1 · Install deps (T4 GPU, Deep Learning VM with CUDA 12.3+, M129, Debian 11, Python 3.10)
+# 1 · Install deps (T4 GPU, Deep Learning VM with CUDA 12.1+, M126, Debian 11, Python 3.10)
 pip install -r requirements.txt
 ```
 
@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 ## 🚀 How to Run
 ```bash
-python benchmark_attn_qlora.py deepseek-ai/deepseek-coder-1.3b-base configs/cmoparison.json runs/bench
+python benchmark_attn_qlora.py deepseek-ai/deepseek-coder-1.3b-base configs/test.json runs/bench
 ```
 
 ###  Stream metrics to Weights & Biases
