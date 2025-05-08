@@ -29,7 +29,7 @@ from datasets import load_dataset
 import evaluate
 
 # custom attention implementations
-from attentions.pa import PagedAttention
+# from attentions.pa import PagedAttention
 from attentions.mla import MultiHeadLatentAttention
 
 

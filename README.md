@@ -74,9 +74,6 @@ export WANDB_API_KEY=<your‑key>
 
 python benchmark_wandb.py deepseek-ai/deepseek-coder-1.3b-base configs/comparison.json runs/wandb
 ```
-Your public dashboard should appear at:
-`https://wandb.ai/<your‑entity>/deepseek-attn-bench`  
-*(The project used for our mid‑point review is already public [here](https://wandb.ai/your-entity/deepseek-attn-bench)).*
 
 ---
 
@@ -115,5 +112,3 @@ Detailed per‑step profiling (CPU+CUDA) is saved in `runs/**/profiling_trace.js
 Released under **Apache 2.0**. If you build on this work, please cite the original LoRA, QLoRA, FlashAttention‑2, and DeepSeek‑Coder papers.
 
 ---
-
-*Happy benchmarking!* — *James W. & contributors*

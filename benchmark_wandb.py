@@ -25,7 +25,7 @@ import evaluate
 import wandb                                                  # ★
 
 # custom attention implementations
-from attentions.pa  import PagedAttention
+# from attentions.pa  import PagedAttention
 from attentions.mla import MultiHeadLatentAttention
 
 

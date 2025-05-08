@@ -35,7 +35,7 @@ from transformers import (
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from datasets import load_dataset
 
-from attentions.pa import PagedAttention
+# from attentions.pa import PagedAttention
 from attentions.mla import MultiHeadLatentAttention
 
 TRAIN_SIZE = 100
