@@ -1,0 +1,29 @@
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_setup.py:_flush():67] Current SDK version is 0.19.9
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_setup.py:_flush():67] Configure stats pid to 5615
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_setup.py:_flush():67] Loading settings from /home/lz2834/.config/wandb/settings
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_setup.py:_flush():67] Loading settings from /home/lz2834/ds/Exploring-Multi-Head-Latent-Attention-in-DeepSeek-V3/wandb/settings
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_setup.py:_flush():67] Loading settings from environment variables
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_init.py:setup_run_log_directory():662] Logging user logs to /home/lz2834/ds/Exploring-Multi-Head-Latent-Attention-in-DeepSeek-V3/wandb/run-20250418_182220-alon3b1a/logs/debug.log
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_init.py:setup_run_log_directory():663] Logging internal logs to /home/lz2834/ds/Exploring-Multi-Head-Latent-Attention-in-DeepSeek-V3/wandb/run-20250418_182220-alon3b1a/logs/debug-internal.log
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_init.py:init():781] calling init triggers
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_init.py:init():786] wandb.init called with sweep_config: {}
+config: {'_wandb': {}}
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_init.py:init():809] starting backend
+2025-04-18 18:22:20,195 INFO    MainThread:5615 [wandb_init.py:init():813] sending inform_init request
+2025-04-18 18:22:20,198 INFO    MainThread:5615 [backend.py:_multiprocessing_setup():101] multiprocessing start_methods=fork,spawn,forkserver, using: spawn
+2025-04-18 18:22:20,198 INFO    MainThread:5615 [wandb_init.py:init():823] backend started and connected
+2025-04-18 18:22:20,199 INFO    MainThread:5615 [wandb_init.py:init():915] updated telemetry
+2025-04-18 18:22:20,203 INFO    MainThread:5615 [wandb_init.py:init():939] communicating run to backend with 90.0 second timeout
+2025-04-18 18:22:20,469 INFO    MainThread:5615 [wandb_init.py:init():1014] starting run threads in backend
+2025-04-18 18:22:20,515 INFO    MainThread:5615 [wandb_run.py:_console_start():2454] atexit reg
+2025-04-18 18:22:20,515 INFO    MainThread:5615 [wandb_run.py:_redirect():2306] redirect: wrap_raw
+2025-04-18 18:22:20,515 INFO    MainThread:5615 [wandb_run.py:_redirect():2371] Wrapping output streams.
+2025-04-18 18:22:20,515 INFO    MainThread:5615 [wandb_run.py:_redirect():2394] Redirects installed.
+2025-04-18 18:22:20,517 INFO    MainThread:5615 [wandb_init.py:init():1056] run started, returning control to user process
+2025-04-18 18:22:20,674 INFO    MainThread:5615 [wandb_run.py:_finish():2189] finishing run louiszh-columbia-university/deepseek-v3/alon3b1a
+2025-04-18 18:22:20,675 INFO    MainThread:5615 [wandb_run.py:_atexit_cleanup():2419] got exitcode: 0
+2025-04-18 18:22:20,675 INFO    MainThread:5615 [wandb_run.py:_restore():2401] restore
+2025-04-18 18:22:20,675 INFO    MainThread:5615 [wandb_run.py:_restore():2407] restore done
+2025-04-18 18:22:21,674 INFO    MainThread:5615 [wandb_run.py:_footer_history_summary_info():4064] rendering history
+2025-04-18 18:22:21,674 INFO    MainThread:5615 [wandb_run.py:_footer_history_summary_info():4096] rendering summary
+2025-04-18 18:22:21,674 INFO    MainThread:5615 [wandb_run.py:_footer_sync_info():4025] logging synced files

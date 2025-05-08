@@ -1,0 +1,12 @@
+wandb_version: 1
+
+impl:
+  value: eager
+lora_r:
+  value: 16
+mode:
+  value: baseline
+model_id:
+  value: deepseek-ai/deepseek-coder-1.3b-base
+train_bs:
+  value: 2

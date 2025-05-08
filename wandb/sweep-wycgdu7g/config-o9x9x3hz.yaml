@@ -1,0 +1,10 @@
+wandb_version: 1
+
+impl:
+  value: eager
+lora_alpha:
+  value: 8
+lora_r:
+  value: 64
+train_bs:
+  value: 4

@@ -1,0 +1,17 @@
+{"time":"2025-04-18T18:18:44.550840533Z","level":"INFO","msg":"stream: starting","core version":"0.19.9","symlink path":"/home/lz2834/ds/Exploring-Multi-Head-Latent-Attention-in-DeepSeek-V3/wandb/run-20250418_181844-jishdmle/logs/debug-core.log"}
+{"time":"2025-04-18T18:18:44.684668049Z","level":"INFO","msg":"created new stream","id":"jishdmle"}
+{"time":"2025-04-18T18:18:44.684703289Z","level":"INFO","msg":"stream: started","id":"jishdmle"}
+{"time":"2025-04-18T18:18:44.684724643Z","level":"INFO","msg":"handler: started","stream_id":"jishdmle"}
+{"time":"2025-04-18T18:18:44.684727164Z","level":"INFO","msg":"sender: started","stream_id":"jishdmle"}
+{"time":"2025-04-18T18:18:44.685713958Z","level":"INFO","msg":"writer: Do: started","stream_id":"jishdmle"}
+{"time":"2025-04-18T18:18:44.704405364Z","level":"ERROR","msg":"HTTP error","status":403,"method":"POST","url":"https://api.wandb.ai/graphql"}
+{"time":"2025-04-18T18:18:44.704494306Z","level":"ERROR","msg":"sender: upsertRun:","error":"failed to upsert bucket: returned error 403: {\"data\":{\"upsertBucket\":null},\"errors\":[{\"message\":\"permission denied\",\"path\":[\"upsertBucket\"],\"extensions\":{\"code\":\"PERMISSION_ERROR\"}}]}"}
+{"time":"2025-04-18T18:18:45.70666169Z","level":"INFO","msg":"stream: closing","id":"jishdmle"}
+{"time":"2025-04-18T18:18:45.706764843Z","level":"ERROR","msg":"sender: upsertConfig: RunRecord is nil"}
+{"time":"2025-04-18T18:18:45.766474787Z","level":"ERROR","msg":"HTTP error","status":404,"method":"POST","url":"https://api.wandb.ai/graphql"}
+{"time":"2025-04-18T18:18:45.766562369Z","level":"ERROR","msg":"runfiles: CreateRunFiles returned error: returned error 404: {\"data\":{\"createRunFiles\":null},\"errors\":[{\"message\":\"project my-awesome-team-name/my-awesome-project not found during createRunFiles\",\"path\":[\"createRunFiles\"]}]}"}
+{"time":"2025-04-18T18:18:45.767091495Z","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-04-18T18:18:45.767133889Z","level":"INFO","msg":"handler: closed","stream_id":"jishdmle"}
+{"time":"2025-04-18T18:18:45.767156814Z","level":"INFO","msg":"writer: Close: closed","stream_id":"jishdmle"}
+{"time":"2025-04-18T18:18:45.767170863Z","level":"INFO","msg":"sender: closed","stream_id":"jishdmle"}
+{"time":"2025-04-18T18:18:45.767199792Z","level":"INFO","msg":"stream: closed","id":"jishdmle"}

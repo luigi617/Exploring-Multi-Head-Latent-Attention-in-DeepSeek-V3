@@ -73,7 +73,10 @@ export WANDB_PROJECT=deepseek-attn-bench
 export WANDB_API_KEY=<your‑key>
 
 python benchmark_attn_qlora_v2.py deepseek-ai/deepseek-coder-1.3b-base configs/comparison.json runs/bench
+
 ```
+
+Our results can be found in the [public report](https://wandb.ai/louiszh-columbia-university/finetune_with_tables/reports/HPML-Adapter-Benchmarking-Results--VmlldzoxMjY4MTQzMA).
 
 ---
 
