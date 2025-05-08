@@ -4,14 +4,13 @@
 ---
 
 ## ✨ Project Motivation
-Large‑language‑model fine‑tuning is often constrained by **GPU memory**, **training speed**, and **engineering complexity**. This project delivers a *drop‑in* framework to **measure the real‑world trade‑offs** between adapter techniques (Baseline, LoRA, QLoRA) under a family of attention implementations:
+Large‑language‑model fine‑tuning is often constrained by **GPU memory**, **training speed**, and **engineering complexity**. This project delivers a framework to **measure the real‑world trade‑offs** between adapter techniques (Baseline, LoRA, QLoRA) under a family of attention implementations:
 
 * **Eager / SDPA** (PyTorch standard)
 * **FlashAttention‑2**
-* **Paged Attention**
 * **Multi‑Head Latent Attention (MLA)**
 
-All experiments use **DeepSeek‑Coder‑1.3B** and a 120‑sample slice of **OpenOrca** for fast iteration during the mid‑point review. We are *not* re‑implementing kernels—just benchmarking.
+All experiments use **DeepSeek‑Coder‑1.3B** and a slice of **OpenOrca** for fast iteration during the mid‑point review. We are *not* re‑implementing kernels—just benchmarking.
 
 ---
 
@@ -19,16 +18,12 @@ All experiments use **DeepSeek‑Coder‑1.3B** and a 120‑sample slice of **Op
 ```text
 .
 ├── attentions/                 # Custom kernels (mla.py)
-├── configs/                    # JSON experiment configs (batch‑size, kernels, …)
+├── configs/                    # JSON experiment configs (seq‑len, kernels, …)
 ├── deepseek‑models/            # Git sub‑module with patched DeepSeek‑Coder‑1.3B
-├── benchmark_attn.py           # Baseline    (fp16) benchmark script
-├── benchmark_attn_lora.py      # LoRA        benchmark script
-├── benchmark_attn_qlora.py     # QLoRA       benchmark script (v1)
-├── benchmark_attn_qlora_v2.py  # QLoRA       benchmark w/ profiling + ROUGE (v2)
+├── benchmark_attn_qlora.py     # QLoRA       benchmark script
 ├── benchmark_wandb.py          # Thin wrapper that streams metrics to Weights & Biases
 ├── finetune_deepseek_attn.py   # One‑off fine‑tune helper (no benchmarking)
 ├── finetune_wandb.py           # Same as above but logs to wandb
-├── model_FA.py                 # FlashAttention‑2 convenience loader
 ├── requirements.txt            # Python dependencies
 └── README.md                   # ← this file
 ```
@@ -37,36 +32,18 @@ All experiments use **DeepSeek‑Coder‑1.3B** and a 120‑sample slice of **Op
 
 ## ⚙️ Setup & Requirements
 ```bash
-# 1 · Create environment
-conda create -n deepseek-bench python=3.10
-conda activate deepseek-bench
-
-# 2 · Install deps (GPU, CUDA 11.8+)
+# 1 · Install deps (T4 GPU, Deep Learning VM with CUDA 12.3+, M129, Debian 11, Python 3.10)
 pip install -r requirements.txt
-
-# 3 · (Optional) install Flash‑Attention‑2 wheels if missing
-#     see: https://github.com/Dao-AILab/flash-attention
 ```
 
 ---
 
-## 🚀 How to Run – Quick Examples
-### 1. Baseline (full‑precision)
+## 🚀 How to Run
 ```bash
-python benchmark_attn.py deepseek-ai/deepseek-coder-1.3b-base configs/baseline.json runs/baseline
+python benchmark_attn_qlora.py deepseek-ai/deepseek-coder-1.3b-base configs/cmoparison.json runs/bench
 ```
 
-### 2. LoRA
-```bash
-python benchmark_attn_lora.py deepseek-ai/deepseek-coder-1.3b-base configs/comparison.json runs/lora
-```
-
-### 3. QLoRA (v2, profiling enabled)
-```bash
-python benchmark_attn_qlora_v2.py deepseek-ai/deepseek-coder-1.3b-base configs/comparison.json runs/qlora_v2
-```
-
-### 4. Stream metrics to Weights & Biases
+###  Stream metrics to Weights & Biases
 ```bash
 export WANDB_API_KEY=<your‑key>
 
