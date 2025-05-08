@@ -68,35 +68,35 @@ python benchmark_attn_qlora_v2.py deepseek-ai/deepseek-coder-1.3b-base configs/c
 
 ### 4. Stream metrics to Weights & Biases
 ```bash
-export WANDB_ENTITY=<your‑entity>
-export WANDB_PROJECT=deepseek-attn-bench
 export WANDB_API_KEY=<your‑key>
 
-python benchmark_attn_qlora_v2.py deepseek-ai/deepseek-coder-1.3b-base configs/comparison.json runs/bench
+pip install wandb
+wandb login
+
+python finetune_wandb.py deepseek-ai/deepseek-coder-1.3b-base configs/test.json runs/bench
 ```
 
 ---
 
-## 📊 Sample Results
-| Mode      | Kernel            | Train t ↓ | Tok/s ↑ | Peak MiB ↓ | Val PPL ↓ |
-|-----------|-------------------|-----------|---------|------------|-----------|
-| baseline  | eager             | 26.0 s    | 3.87    | 13 114     | 17.9      |
-| baseline  | flash‑attn‑2      | 25.8 s    | 3.90    | 13 114     | 17.8      |
-| baseline  | MLA               | 21.9 s    | 4.60    | 16 863     | 18.4      |
-| **LoRA**  | eager             | 23.9 s    | 4.22    | 16 863     | 18.0      |
-| **QLoRA** | flash‑attn‑2      | 18.7 s    | 4.95    | **8 732**  | 18.3      |
-
-Detailed per‑step profiling (CPU+CUDA) is saved in `runs/**/profiling_trace.json`; open in Chrome DevTools ➜ *Performance* for flame‑charts.
+## Results
+| Mode      | Kernel            | Train t ↓ | Sample/s ↑ | Peak MiB ↓ | 
+|-----------|-------------------|-----------|------------|------------|
+| **LoRA**  | eager             | 24.5 s    | 4.116      | 7226       |
+| **LoRA**  | sdpa              | 24.9 s    | 4.063      | 7226       |
+| **LoRA**  | flash‑attn‑2      | 24.6 s    | 4.100      | 7226       |
+| **LoRA**  | MLA               | 20.7 s    | 4.910      | 7226       |
+| **QLoRA** | eager             | 88.0 s    | 1.139      | 7226       |
+| **QLoRA** | sdpa              | 87.8 s    | 1.143      | 7226       |
+| **QLoRA** | flash‑attn‑2      | 87.8 s    | 1.141      | 7226       |
+| **QLoRA** | MLA               | 77.6 s    | 1.293      | 8294       |
 
 ---
 
 ## 🔍 Observations (Mid‑point)
-* **FlashAttention‑2** gives a consistent ~4 % speed‑up over SDPA with no memory penalty.
-* **MLA** delivers the highest throughput but increases GPU memory via latent projections.
-* **QLoRA + FA‑2** *halves* peak memory vs. fp16 while also being the fastest overall.
-* Quality differences (Perplexity, ROUGE‑L) remain within ±3 % on the small OpenOrca slice.
-
-> *Take‑away:* For small‑/mid‑scale fine‑tuning, **QLoRA combined with FlashAttention‑2** provides the best compute‑/memory‑efficiency sweet spot.
+* LoRA + MLA is fastest: 4.91 samples/sec, 20.7s runtime — due to low-rank updates + efficient MLA attention.
+* LoRA is ~4× faster than QLoRA: LoRA avoids quantization overhead; QLoRA requires dequantization during training.
+* QLoRA + MLA is fastest QLoRA setup: Best among QLoRA variants, but ~15% higher memory usage (8294 MiB).
+* Tradeoff: QLoRA saves memory via quantization, but training is significantly slower than LoRA.
 
 ---
 
@@ -104,11 +104,6 @@ Detailed per‑step profiling (CPU+CUDA) is saved in `runs/**/profiling_trace.js
 1. **Change kernels** – edit `configs/*.json` → "attn_impls" : ["eager", "flash_attention_2", …].
 2. **Bigger data**    – bump `TRAIN_SIZE`, `VAL_SIZE`, or point to a HF dataset split.
 3. **More epochs**    – adjust `num_train_epochs` in the config or script.
-4. **Distributed**    – pass `--deepspeed ds_config.json` or enable FSDP in `TrainingArguments`.
-
----
-
-## 📄 License & Citation
-Released under **Apache 2.0**. If you build on this work, please cite the original LoRA, QLoRA, FlashAttention‑2, and DeepSeek‑Coder papers.
+4. **Distributed**    – pass `--deepspeed ds_config.json`
 
 ---
