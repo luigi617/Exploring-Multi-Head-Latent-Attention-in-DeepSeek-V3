@@ -72,7 +72,7 @@ export WANDB_ENTITY=<your‑entity>
 export WANDB_PROJECT=deepseek-attn-bench
 export WANDB_API_KEY=<your‑key>
 
-python benchmark_wandb.py deepseek-ai/deepseek-coder-1.3b-base configs/comparison.json runs/wandb
+python benchmark_attn_qlora_v2.py deepseek-ai/deepseek-coder-1.3b-base configs/comparison.json runs/bench
 ```
 Your public dashboard should appear at:
 `https://wandb.ai/<your‑entity>/deepseek-attn-bench`  
