@@ -38,7 +38,7 @@ from datasets import load_dataset
 from attentions.pa import PagedAttention
 from attentions.mla import MultiHeadLatentAttention
 
-TRAIN_SIZE = 100
+TRAIN_SIZE = 10000
 SEED       = 42
 
 # -----------------------------------------------------------------------------
@@ -95,7 +95,7 @@ def main():
     collator = DataCollatorForLanguageModeling(tokenizer=tok, mlm=False, pad_to_multiple_of=8)
 
     attn_impls: List[str] = cfg.get("attn_impls", [])
-    adapters: List[str]  = cfg.get("adapter_modes", ["baseline", "lora", "qlora"])
+    adapters: List[str]  = cfg.get("adapter_modes", ["lora", "qlora"])
 
     results: List[Dict[str, Any]] = []
 
@@ -109,11 +109,33 @@ def main():
             # model loading
             # ----------------------------------------------------------
             if adapter == "qlora":
-                bnb_cfg = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16, bnb_4bit_use_double_quant=True)
-                model = AutoModelForCausalLM.from_pretrained(args.model_id, quantization_config=bnb_cfg, device_map="auto")
-            else:
-                dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-                model = AutoModelForCausalLM.from_pretrained(args.model_id, torch_dtype=dtype, device_map="auto" if torch.cuda.is_available() else None)
+                # QLoRA → 4-bit + prepare_model_for_kbit_training
+                bnb_cfg = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_compute_dtype=torch.float16,
+                )
+                model = AutoModelForCausalLM.from_pretrained(
+                    args.model_id, quantization_config=bnb_cfg, device_map="auto"
+                )
+                model = prepare_model_for_kbit_training(model)   # ← mandatory, before LoRA
+
+            elif adapter == "lora":
+                # LoRA → fp16 on GPU, fp32 on CPU
+                dtype = torch.float16 if torch.cuda.is_available() else torch.float32   # NEW
+                model = AutoModelForCausalLM.from_pretrained(
+                    args.model_id,
+                    torch_dtype=dtype,
+                    device_map="auto" if torch.cuda.is_available() else None,
+                )
+
+            else:  # baseline
+                # Baseline → **full-precision fp32** everywhere        # NEW / CHANGED
+                model = AutoModelForCausalLM.from_pretrained(
+                    args.model_id,
+                    torch_dtype=torch.float32,
+                    device_map="auto" if torch.cuda.is_available() else None,
+                )
 
             # swap attention if custom
             if impl not in {"eager", "sdpa", "flash_attention_2", "flex_attention"}:
