@@ -90,8 +90,14 @@ class MultiHeadLatentAttention(nn.Module):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple]]:
 
         b, s, _ = hidden_states.size()
-        device  = hidden_states.device
-        latent_tokens = self.latents.unsqueeze(0).expand(b, -1, -1)  # (B, L, D)
+        target_dtype = self.to_q_latent.weight.dtype           # usually fp16 or fp32
+   
+        if hidden_states.dtype != target_dtype:
+            hidden_states = hidden_states.to(target_dtype)
+   
+        latent_tokens = self.latents                         \
+            .to(target_dtype)                                \
+            .unsqueeze(0).expand(b, -1, -1)                  # (B, L, D)
 
         # --------------- Stage 1 – latents attend over **tokens**
         q_l = self._shape(self.to_q_latent(latent_tokens), b)  # (B, H, L, D)
