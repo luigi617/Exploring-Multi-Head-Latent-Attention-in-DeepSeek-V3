@@ -3,45 +3,34 @@
 benchmark_attn_qlora_v2.py
 Finetune the same model with LoRA/QLoRA under different attention
 implementations and report speed / memory / profiling breakdown & evaluation.
-
-USAGE
+Added Weights & Biases experiment tracking.
 -----
 python benchmark_attn_qlora_v2.py deepseek-ai/deepseek-coder-1.3b-base \
      configs/comparison.json runs/bench
 """
 from __future__ import annotations
-
 import argparse, os, json, time, gc, math, random, csv
 from typing import Dict, List, Any
 
 import torch
 from torch.profiler import profile, record_function, ProfilerActivity
 from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    BitsAndBytesConfig,
-    TrainingArguments,
-    Trainer,
-    DataCollatorForLanguageModeling,
+    AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig,
+    TrainingArguments, Trainer, DataCollatorForLanguageModeling
 )
+from transformers.integrations import WandbCallback          # ★
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from datasets import load_dataset
 import evaluate
+import wandb                                                  # ★
 
 # custom attention implementations
-# from attentions.pa import PagedAttention
+# from attentions.pa  import PagedAttention
 from attentions.mla import MultiHeadLatentAttention
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-# tiny constants so the script stays quick-n-dirty for a demo run
-TRAIN_SIZE = 100
-VAL_SIZE   = 20
-SEED       = 42
-# ----------------------------------------------------------------------------------------------------------------------
+TRAIN_SIZE, VAL_SIZE, SEED = 10, 5, 42
 
-
-# ---------- helpers -------------------------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
@@ -59,7 +48,6 @@ def perplexity(loss: float) -> float:
 
 
 def unload_model(model: torch.nn.Module) -> None:
-    """Free GPU RAM without secretly copying 4-bit layers back to CPU first."""
     del model
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -73,7 +61,6 @@ def greedy_gen_tokens_per_s(
     max_new: int = 32,
     n_trials: int = 3,
 ) -> float:
-    """Rough generation throughput (tokens / second)."""
     device = next(model.parameters()).device
     enc = tok(prompt, return_tensors="pt").to(device)
 
@@ -86,10 +73,8 @@ def greedy_gen_tokens_per_s(
             torch.cuda.synchronize()
         start = time.time()
         _ = model.generate(
-            **enc,
-            max_new_tokens=max_new,
-            pad_token_id=tok.pad_token_id,
-            do_sample=False,
+            **enc, max_new_tokens=max_new,
+            pad_token_id=tok.pad_token_id, do_sample=False
         )
         if torch.cuda.is_available():
             torch.cuda.synchronize()
@@ -98,32 +83,25 @@ def greedy_gen_tokens_per_s(
 
     return round(total_tokens / max(total_time, 1e-6), 2)
 
+
 def replace_attention_with_quantized(
     orig_attn: torch.nn.Module,
     impl: str,
-    cfg,
+    cfg: Any,
 ) -> torch.nn.Module:
     if impl == "mla":
-        # Initialize MLA with random weights (LoRA will train adapters)
-        custom_attn = MultiHeadLatentAttention(
-            cfg,
-            num_latents=getattr(cfg, "num_latents", 64),
-            dropout=cfg.attention_dropout,
-            quantization="4bit",  # Match base model's 4-bit config
-        )
-        # No weight copying - MLA starts fresh
+        custom_attn = MultiHeadLatentAttention(cfg)
     elif impl == "paged":
-        custom_attn = PagedAttention(
-            cfg,
-            block_size=64,
-            quantization="4bit",
-        )
+        custom_attn = PagedAttention(cfg, block_size=64)
+        custom_attn.q_proj = orig_attn.q_proj
+        custom_attn.k_proj = orig_attn.k_proj
+        custom_attn.v_proj = orig_attn.v_proj
+        custom_attn.o_proj = orig_attn.o_proj
     else:
         raise ValueError(f"Unsupported attention implementation: {impl}")
-
     return custom_attn
 
-# ---------- main ------------------------------------------------------------------------------------------------
+
 
 def main() -> None:
     args = parse_args()
@@ -133,15 +111,11 @@ def main() -> None:
     random.seed(SEED)
     torch.manual_seed(SEED)
 
-    # ----- quantisation -----
     bnb_cfg = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_use_double_quant=True,
+        load_in_4bit=True, bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16, bnb_4bit_use_double_quant=True,
     )
 
-    # ----- tokenizer & data -----
     tok = AutoTokenizer.from_pretrained(args.model_id, use_fast=True)
     if tok.pad_token_id is None:
         tok.pad_token_id = tok.eos_token_id
@@ -163,22 +137,32 @@ def main() -> None:
     val_set   = val_ds.map(tokenize_fn,   remove_columns=val_ds.column_names)
 
     data_collator = DataCollatorForLanguageModeling(tokenizer=tok,
-                                                    mlm=False,
-                                                    pad_to_multiple_of=8)
-
+                                                    mlm=False, pad_to_multiple_of=8)
     rouge = evaluate.load("rouge")
-
     impls: List[str] = cfg.get("attn_impls", [])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     results: List[Dict[str, Any]] = []
 
-    # ===== loop over attention implementations =========================================================
     for impl in impls:
         run_dir = os.path.join(args.out_dir, impl)
         os.makedirs(run_dir, exist_ok=True)
 
-        # ---- load base model (with default eager attention first) ----
+        wandb_run = wandb.init(
+            project="Final-proj",
+            name=f"{impl}-{args.model_id.split('/')[-1]}",
+            dir=run_dir,
+            reinit=True,
+            config={
+                "model_id": args.model_id,
+                "impl": impl,
+                **cfg,
+                "train_size": TRAIN_SIZE,
+                "val_size": VAL_SIZE,
+                "seed": SEED,
+            },
+        )
+
         base_kwargs = dict(
             pretrained_model_name_or_path=args.model_id,
             quantization_config=bnb_cfg,
@@ -187,31 +171,26 @@ def main() -> None:
 
         if impl in {"eager", "sdpa", "flash_attention_2", "flex_attention"}:
             model = AutoModelForCausalLM.from_pretrained(
-                **base_kwargs,
-                attn_implementation=impl,
+                **base_kwargs, attn_implementation=impl
             )
         else:
             model = AutoModelForCausalLM.from_pretrained(
-                **base_kwargs,
-                attn_implementation="eager",
+                **base_kwargs, attn_implementation="eager"
             )
             for layer in model.model.layers:
                 layer.self_attn = replace_attention_with_quantized(
                     layer.self_attn, impl, model.config
                 ).to(layer.self_attn.q_proj.weight.device)
 
-        # ----- QLoRA prep -----
         model = prepare_model_for_kbit_training(model)
         model.enable_input_require_grads()
 
-        # Verify types
         for idx, layer in enumerate(model.model.layers):
             if impl == "paged" and not isinstance(layer.self_attn, PagedAttention):
                 raise RuntimeError(f"Layer {idx} not PagedAttention")
             if impl == "mla" and not isinstance(layer.self_attn, MultiHeadLatentAttention):
                 raise RuntimeError(f"Layer {idx} not MultiHeadLatentAttention")
 
-        # ----- LoRA adapters -----
         target_modules = (
             ["to_q_latent", "to_k_token", "to_v_token", "out_latent",
              "to_q_token", "to_k_latent", "to_v_latent", "out_token"]
@@ -228,18 +207,11 @@ def main() -> None:
         except TypeError:
             model.gradient_checkpointing_enable()
 
-        # ----- Trainer -----
         tr_args = TrainingArguments(
-            output_dir=run_dir,
-            fp16=True,
-            seed=SEED,
-            per_device_train_batch_size=4,
-            gradient_accumulation_steps=32,
-            num_train_epochs=1,
-            logging_steps=10,
-            save_total_limit=1,
-            report_to="none",
-            gradient_checkpointing=True,
+            output_dir=run_dir, fp16=True, seed=SEED,
+            per_device_train_batch_size=4, gradient_accumulation_steps=32,
+            num_train_epochs=1, logging_steps=10, save_total_limit=1,
+            report_to="none", gradient_checkpointing=True,
         )
         trainer = Trainer(
             model=model,
@@ -247,9 +219,9 @@ def main() -> None:
             train_dataset=train_set,
             eval_dataset=val_set,
             data_collator=data_collator,
+            callbacks=[WandbCallback()]
         )
 
-        # ----- Profiling a single fwd/bwd step -----
         if torch.cuda.is_available():
             model.train()
             batch = next(iter(trainer.get_train_dataloader()))
@@ -263,13 +235,15 @@ def main() -> None:
                     loss = model(**batch).loss
                     loss.backward()
 
-            prof.export_chrome_trace(os.path.join(run_dir, "profiling_trace.json"))
+            trace_path = os.path.join(run_dir, "profiling_trace.json")
+            prof.export_chrome_trace(trace_path)
             with open(os.path.join(run_dir, "profiling_summary.txt"), "w") as pf:
                 pf.write(prof.key_averages().table(sort_by="cpu_time_total",
                                                    row_limit=10))
+            wandb.save(trace_path)
+            wandb.save(os.path.join(run_dir, "profiling_summary.txt"))  # ★
             torch.cuda.empty_cache()
 
-        # ----- Full train & eval -----
         start_t = time.time()
         train_out = trainer.train()
         train_runtime = time.time() - start_t
@@ -279,7 +253,6 @@ def main() -> None:
         eval_out = trainer.evaluate()
         gen_tok_s = greedy_gen_tokens_per_s(model, tok)
 
-        # ----- ROUGE eval on up to 100 samples -----
         max_eval = min(100, len(raw_val_ds))
         predictions, references = [], []
         model.eval()
@@ -295,11 +268,10 @@ def main() -> None:
         rouge_scores = rouge.compute(predictions=predictions,
                                      references=references)
 
-        # ----- summarise -----
         trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         total     = sum(p.numel() for p in model.parameters())
 
-        results.append({
+        summary = {
             "impl": impl,
             "train_runtime_s": round(train_runtime, 1),
             "train_samples_per_s": round(train_out.metrics.get("train_samples_per_second", 0), 3),
@@ -314,18 +286,20 @@ def main() -> None:
             "rougeL": round(rouge_scores["rougeL"], 4),
             "trainable_params_M": round(trainable / 1e6, 1),
             "total_params_M": round(total / 1e6, 1),
-        })
+        }
+        results.append(summary)
+        wandb.log(summary)
 
         unload_model(model)
+        wandb_run.finish()
 
-    # ----- persist summary -----
     with open(os.path.join(args.out_dir, "bench_results.json"), "w") as f:
         json.dump(results, f, indent=2)
-
     with open(os.path.join(args.out_dir, "bench_results.csv"), "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=results[0].keys())
         writer.writeheader()
         writer.writerows(results)
+    wandb.save(os.path.join(args.out_dir, "bench_results.*"))
 
     print("\n=== BENCHMARK SUMMARY ===")
     for r in results:

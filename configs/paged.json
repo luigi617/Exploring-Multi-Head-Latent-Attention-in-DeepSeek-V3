@@ -1,4 +1,4 @@
 {
-    "attn_impl": "paged",
+    "attn_impls": "paged",
     "max_seq_len": 2048
 }
