@@ -3,7 +3,7 @@
 
 ---
 
-## ✨ Project Motivation
+## Project Motivation
 Large‑language‑model fine‑tuning is often constrained by **GPU memory**, **training speed**, and **engineering complexity**. This project delivers a framework to **measure the real‑world trade‑offs** between adapter techniques (Baseline, LoRA, QLoRA) under a family of attention implementations:
 
 * **Eager / SDPA** (PyTorch standard)
@@ -14,7 +14,7 @@ All experiments use **DeepSeek‑Coder‑1.3B** and a slice of **OpenOrca** for 
 
 ---
 
-## 🗂 Repository Outline
+## Repo Outline
 ```text
 .
 ├── attentions/                 # Custom kernels (mla.py)
@@ -30,7 +30,7 @@ All experiments use **DeepSeek‑Coder‑1.3B** and a slice of **OpenOrca** for 
 
 ---
 
-## ⚙️ Setup & Requirements
+## Setup & Requirements
 ```bash
 # 1 · Install deps (T4 GPU, Deep Learning VM with CUDA 12.1+, M126, Debian 11, Python 3.10)
 pip install -r requirements.txt
@@ -38,7 +38,7 @@ pip install -r requirements.txt
 
 ---
 
-## 🚀 How to Run
+## How to Run
 ```bash
 python benchmark_attn_qlora.py deepseek-ai/deepseek-coder-1.3b-base configs/test.json runs/bench
 ```
@@ -70,7 +70,7 @@ Our results can be found in the [public report](https://wandb.ai/louiszh-columbi
 
 ---
 
-## 🔍 Observations (Mid‑point)
+## Observations
 * LoRA + MLA is fastest: 4.91 samples/sec, 20.7s runtime — due to low-rank updates + efficient MLA attention.
 * LoRA is ~4× faster than QLoRA: LoRA avoids quantization overhead; QLoRA requires dequantization during training.
 * QLoRA + MLA is fastest QLoRA setup: Best among QLoRA variants, but ~15% higher memory usage (8294 MiB).
@@ -78,7 +78,7 @@ Our results can be found in the [public report](https://wandb.ai/louiszh-columbi
 
 ---
 
-## 🔄 Reproduce & Extend
+## Reproduction & Extend
 1. **Change kernels** – edit `configs/*.json` → "attn_impls" : ["eager", "flash_attention_2", …].
 2. **Bigger data**    – bump `TRAIN_SIZE`, `VAL_SIZE`, or point to a HF dataset split.
 3. **More epochs**    – adjust `num_train_epochs` in the config or script.
