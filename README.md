@@ -18,7 +18,7 @@ All experiments use **DeepSeek‑Coder‑1.3B** and a 120‑sample slice of **Op
 ## 🗂 Repository Outline
 ```text
 .
-├── attentions/                 # Custom kernels (paged_attention.py, mla.py, …)
+├── attentions/                 # Custom kernels (mla.py)
 ├── configs/                    # JSON experiment configs (batch‑size, kernels, …)
 ├── deepseek‑models/            # Git sub‑module with patched DeepSeek‑Coder‑1.3B
 ├── benchmark_attn.py           # Baseline    (fp16) benchmark script
