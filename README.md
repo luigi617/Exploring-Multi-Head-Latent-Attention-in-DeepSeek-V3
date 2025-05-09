@@ -1,10 +1,9 @@
-# HPML Project: Exploring Multi‑Head Latent Attention in DeepSeek-Coder
+# HPML Final Project: Exploring Multi‑Head Latent Attention in DeepSeek-Coder
 
 A systematic benchmark of LoRA, QLoRA & baseline fine‑tuning across multiple attention kernels.
 
 ---
 ## Team Information
-- **Team Name**: [Team Name]
 - **Members**:
   - Luigi Liu (ll3840)
   - Yixiao Li (yl5760)
@@ -24,7 +23,7 @@ All experiments use **DeepSeek‑Coder‑1.3B** and a slice of **OpenOrca** for 
 
 ---
 
-## 2. Model Description
+## Model Description
 
 - **Base Architecture**  
   - **Model:** `deepseek-ai/deepseek-coder-1.3b-base` (1.3 B-parameter causal LM)  
@@ -83,7 +82,7 @@ All experiments use **DeepSeek‑Coder‑1.3B** and a slice of **OpenOrca** for 
 
 ---
 
-## 3. Final Results Summary
+## Final Results Summary
 
 | Mode      | Kernel       | Train Time (s) ↓ | Samples/s ↑ | Peak Mem (MiB) ↓ |
 | --------- | ------------ | ---------------- | ----------- | ---------------- |
@@ -101,7 +100,7 @@ All experiments use **DeepSeek‑Coder‑1.3B** and a slice of **OpenOrca** for 
 | **QLoRA** | MLA          | 481.4            | 2.079       | 3 950            |
 
 
-Public report from wandb: [https://api.wandb.ai/links/louiszh-columbia-university/5mknyy8s](https://api.wandb.ai/links/louiszh-columbia-university/5mknyy8s)
+W&B [public report](https://api.wandb.ai/links/louiszh-columbia-university/5mknyy8s) of results
 ---
 
 ## Observations
@@ -115,9 +114,9 @@ Public report from wandb: [https://api.wandb.ai/links/louiszh-columbia-universit
 
 ---
 
-## 4. Reproducibility Instructions
+## Reproducibility Instructions
 
-### A. Requirements
+### Requirements
 
 Install Python dependencies:
 ```bash
@@ -126,7 +125,7 @@ pip install -r requirements.txt
 
 ---
 
-### B. Benchmark QLoRA
+### Benchmark QLoRA
 
 ```bash
 python benchmark_attn_qlora.py \
@@ -137,7 +136,7 @@ python benchmark_attn_qlora.py \
 
 ---
 
-### C. Stream metrics to Weights & Biases
+### Stream metrics to Weights & Biases
 
 ```bash
 export WANDB_API_KEY=<your-key>
@@ -152,12 +151,11 @@ python finetune_wandb.py \
 
 ---
 
-### D. Quickstart: Minimum Reproducible Result
+### Quickstart: Minimum Reproducible Result
 
 To reproduce our minimum reported result, run:
 
 ```bash
-# Step 1: Set up environment
 pip install -r requirements.txt
 
 python benchmark_attn_qlora.py \
