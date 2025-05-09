@@ -57,8 +57,12 @@ Our results can be found in the [public report](https://api.wandb.ai/links/louis
 ---
 
 ## Results
-| Mode      | Kernel            | Train t ↓ | Sample/s ↑ | Peak MiB ↓ | 
-|-----------|-------------------|-----------|------------|------------|
+| Mode      | Kernel            | Train t ↓  | Sample/s ↑ | Peak MiB ↓ | 
+|-----------|-------------------|------------|------------|------------|
+| Baseline  | eager             | 246.0 s    | 4.100      | 14800      |
+| Baseline  | sdpa              | 246.1 s    | 4.100      | 14800      |
+| Baseline  | flash‑attn‑2      | 246.2 s    | 4.090      | 14800      |
+| Baseline  | MLA               | 198.5 s    | 5.105      | 14800      |
 | **LoRA**  | eager             | 237.9 s    | 4.207      | 8480       |
 | **LoRA**  | sdpa              | 238.0 s    | 4.208      | 8480       |
 | **LoRA**  | flash‑attn‑2      | 238.1 s    | 4.206      | 8480       |
