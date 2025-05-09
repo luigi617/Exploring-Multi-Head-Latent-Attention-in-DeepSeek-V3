@@ -63,10 +63,10 @@ Our results can be found in the [public report](https://api.wandb.ai/links/louis
 | **LoRA**  | sdpa              | 238.0 s    | 4.208      | 8480       |
 | **LoRA**  | flash‑attn‑2      | 238.1 s    | 4.206      | 8480       |
 | **LoRA**  | MLA               | 184.2 s    | 5.442      | 8480       |
-| **QLoRA** | eager             | 827.5 s    | 1.209      | 7226       |
-| **QLoRA** | sdpa              | 827.5 s    | 1.209      | 7226       |
-| **QLoRA** | flash‑attn‑2      | 827.7 s    | 1.209      | 7226       |
-| **QLoRA** | MLA               | 481.4 s    | 2.709      | 8294       |
+| **QLoRA** | eager             | 827.5 s    | 1.209      | 2950       |
+| **QLoRA** | sdpa              | 827.5 s    | 1.209      | 2950       |
+| **QLoRA** | flash‑attn‑2      | 827.7 s    | 1.209      | 2950       |
+| **QLoRA** | MLA               | 481.4 s    | 2.079      | 3950       |
 
 ---
 
