@@ -71,10 +71,11 @@ Our results can be found in the [public report](https://api.wandb.ai/links/louis
 ---
 
 ## Observations
-* LoRA + MLA is fastest: 5.442 samples/sec, 184.2s runtime — due to low-rank updates + efficient MLA attention.
-* LoRA is ~4× faster than QLoRA: LoRA avoids quantization overhead; QLoRA requires dequantization during training.
-* QLoRA + MLA is fastest QLoRA setup: Best among QLoRA variants, but ~15% higher memory usage.
-* Tradeoff: QLoRA saves memory via quantization, but training is significantly slower than LoRA.
+* MLA (Memory-efficient Low-rank Attention) is consistently the fastest and most efficient in terms of training speed across all modes.
+* LoRA + fp16 offers an excellent balance: fast training with significant memory savings (~43% less than baseline).
+* QLoRA (quantized 4-bit) reduces memory usage the most (down to ~2950 MiB), but suffers from lower throughput—except when using MLA, which nearly doubles its speed while still being memory-efficient.
+* The attention implementation (eager, sdpa, flash_attention_2) has minimal impact on performance unless using MLA, which clearly boosts both speed and samples/sec.
+
 
 ---
 
