@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 benchmark_attn_adapters.py
 =========================
@@ -98,7 +97,7 @@ def main():
             os.makedirs(run_dir, exist_ok=True)
 
             if adapter == "qlora":
-                # QLoRA → 4-bit + prepare_model_for_kbit_training
+                # QLoRA: 4-bit
                 bnb_cfg = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_use_double_quant=True,
@@ -110,7 +109,7 @@ def main():
                 model = prepare_model_for_kbit_training(model)   # ← mandatory, before LoRA
 
             elif adapter == "lora":
-                # LoRA → fp16 on GPU, fp32 on CPU
+                # LoRA
                 dtype = torch.float16 if torch.cuda.is_available() else torch.float32   # NEW
                 model = AutoModelForCausalLM.from_pretrained(
                     args.model_id,
@@ -119,21 +118,19 @@ def main():
                 )
 
             else:  # baseline
-                # Baseline → **full-precision fp32** everywhere        # NEW / CHANGED
                 model = AutoModelForCausalLM.from_pretrained(
                     args.model_id,
                     torch_dtype=torch.float32,
                     device_map="auto" if torch.cuda.is_available() else None,
                 )
 
-            # swap attention if custom
+            # swap attention
             if impl not in {"eager", "sdpa", "flash_attention_2", "flex_attention"}:
                 for layer in model.model.layers:
-                    ref = layer.self_attn.q_proj.weight          # reference tensor
+                    ref = layer.self_attn.q_proj.weight # reference tensor
                     new_attn = custom_attention(impl, model.config)
 
-                    # choose a safe fp dtype: keep ref.dtype if it is already fp;
-                    # otherwise fall back to fp16 (or bf16 if you prefer)
+                    # choose safe fp dtype
                     target_dtype = (
                         ref.dtype if ref.dtype.is_floating_point else torch.float16
                     )
@@ -143,7 +140,6 @@ def main():
             else:
                 model.config.attn_implementation = impl
 
-            # attach adapters if needed
             if adapter in {"lora", "qlora"}:
                 target_modules = [
                     "to_q_latent","to_k_token","to_v_token","out_latent",
@@ -157,7 +153,7 @@ def main():
 
             model.gradient_checkpointing_enable()
 
-            # trainer
+
             trainer = Trainer(
                 model=model,
                 args=TrainingArguments(
@@ -203,7 +199,7 @@ def main():
 
             unload(model)
 
-    # dump summary
+    # dump
     json.dump(results, open(os.path.join(args.out_dir,"bench_results.json"),"w"), indent=2)
     print("\n== SPEED BENCHMARK ==")
     for r in results:

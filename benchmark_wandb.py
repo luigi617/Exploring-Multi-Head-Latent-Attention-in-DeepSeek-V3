@@ -1,9 +1,7 @@
-#!/usr/bin/env python
 """
 benchmark_attn_qlora_v2.py
-Finetune the same model with LoRA/QLoRA under different attention
-implementations and report speed / memory / profiling breakdown & evaluation.
-Added Weights & Biases experiment tracking.
+
++ Weights & Biases experiment tracking.
 -----
 python benchmark_attn_qlora_v2.py deepseek-ai/deepseek-coder-1.3b-base \
      configs/comparison.json runs/bench
@@ -18,11 +16,11 @@ from transformers import (
     AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig,
     TrainingArguments, Trainer, DataCollatorForLanguageModeling
 )
-from transformers.integrations import WandbCallback          # ★
+from transformers.integrations import WandbCallback
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from datasets import load_dataset
 import evaluate
-import wandb                                                  # ★
+import wandb
 
 # custom attention implementations
 # from attentions.pa  import PagedAttention
@@ -149,7 +147,7 @@ def main() -> None:
         os.makedirs(run_dir, exist_ok=True)
 
         wandb_run = wandb.init(
-            project="Final-proj",
+            project="finetuning_test",
             name=f"{impl}-{args.model_id.split('/')[-1]}",
             dir=run_dir,
             reinit=True,

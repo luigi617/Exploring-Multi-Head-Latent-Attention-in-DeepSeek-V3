@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 benchmark_attn_adapters.py
 Compare speed + peak‑mem for Baseline / LoRA / QLoRA across attention kernels
@@ -17,14 +16,13 @@ from transformers import (
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from datasets import load_dataset
 
-# from attentions.pa import PagedAttention       # uncomment if you use it
+# from attentions.pa import PagedAttention
 from attentions.mla import MultiHeadLatentAttention
-import wandb                                      # W&B
+import wandb
 
 TRAIN_SIZE = 100
 SEED       = 42
 
-# ----------------------------------------------------------------------------- helpers
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("model_id")
@@ -46,7 +44,6 @@ def custom_attention(impl: str, cfg):
         return PagedAttention(cfg, block_size=64)
     raise ValueError(impl)
 
-# ----------------------------------------------------------------------------- main
 def main():
     args = parse_args()
     cfg: Dict[str, Any] = json.load(open(args.cfg_file))
@@ -72,15 +69,15 @@ def main():
     collator  = DataCollatorForLanguageModeling(tokenizer=tok, mlm=False, pad_to_multiple_of=8)
     results: List[Dict[str, Any]] = []
 
-    # ------------------------------------------------------------------------- grid loop
+    # grid
     for adapter in adapters:
         for impl in attn_impls:
             tag, run_dir = f"{adapter}_{impl}", os.path.join(args.out_dir, f"{adapter}_{impl}")
             os.makedirs(run_dir, exist_ok=True)
 
-            # ------------- W&B run -----------------------------------------------------
+            # W&B run
             wandb_run = wandb.init(
-                project="finetune_with_tables",     # change if desired
+                project="finetune_with_tables2",
                 name=tag,
                 dir=run_dir,
                 reinit=True,
@@ -94,7 +91,7 @@ def main():
                 },
             )
 
-            # ------------- model + quant/adapters -------------------------------------
+            # tests
             if adapter == "qlora":
                 bnb_cfg = BitsAndBytesConfig(load_in_4bit=True,
                                              bnb_4bit_compute_dtype=torch.float16,
@@ -135,7 +132,6 @@ def main():
 
             model.gradient_checkpointing_enable()
 
-            # ------------- trainer -----------------------------------------------------
             trainer = Trainer(
                 model=model,
                 args=TrainingArguments(
@@ -154,7 +150,7 @@ def main():
                 data_collator=collator,
             )
 
-            # ------------- one epoch + profiler ---------------------------------------
+            # profiling
             with profile(
                 activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
                 schedule=torch.profiler.schedule(wait=0, warmup=1, active=2, repeat=0),
@@ -178,7 +174,7 @@ def main():
             results.append(summary)
             wandb.log(summary)
 
-            # ------------- QUALITATIVE TABLE (5 examples)  -------------------- ★ NEW
+            # Tables
             table = wandb.Table(columns=["impl","mode","question","reference","prediction"])
             model.eval()
             with torch.no_grad():
@@ -193,7 +189,7 @@ def main():
                     table.add_data(impl, adapter, prompt, ex["response"], pred)
             wandb.log({"qualitative_samples": table})
 
-            # ------------- ARTIFACTS: checkpoint + profiler bundle ------------- ★ NEW
+            # artifacts
             ckpt_dir = os.path.join(run_dir, "checkpoint")
             trainer.save_model(ckpt_dir)
 
@@ -211,7 +207,6 @@ def main():
             unload(model)
             wandb_run.finish()
 
-    # --------------------- aggregate JSON (not uploaded) ---------------------------
     json.dump(results, open(os.path.join(args.out_dir,"bench_results.json"),"w"), indent=2)
     print("\n== SPEED BENCHMARK ==")
     for r in results:
