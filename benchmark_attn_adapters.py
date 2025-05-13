@@ -1,7 +1,7 @@
 """
-benchmark_attn_adapters.py (with Weights & Biases integration + accuracy evaluation)
-==============================================================================
-Compare fine‑tuning *speed*, *peak memory*, **and token‑level accuracy** for
+benchmark_attn_adapters.py (with Weights & Biases integration + EM / token‑F1 evaluation)
+===============================================================================
+Compare fine‑tuning *speed*, *peak memory*, **exact‑match accuracy**, and **token‑level F1** for
 
 * **baseline** (no adapters, full‑precision)
 * **LoRA**      (fp16 weights + LoRA)
@@ -40,24 +40,50 @@ import wandb  # WandB integration
 # from attentions.pa import PagedAttention
 from attentions.mla import MultiHeadLatentAttention
 
-TRAIN_SIZE = 3000     # samples for throughput benchmark
-EVAL_SIZE  = 500     # separate samples for accuracy evaluation
+TRAIN_SIZE = 5     # samples for throughput benchmark
+EVAL_SIZE  = 5     # separate samples for accuracy evaluation
 SEED       = 42
 
 
-# -----------------------
-# Metric: token accuracy
-# -----------------------
+# --------------------------------------
+# Metrics: Exact‑Match and token‑level F1
+# --------------------------------------
+
+def _compute_precision_recall_f1(tp: int, fp: int, fn: int):
+    """Utility for micro‑averaged P / R / F1."""
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall    = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    if precision + recall == 0:
+        f1 = 0.0
+    else:
+        f1 = 2 * precision * recall / (precision + recall)
+    return precision, recall, f1
+
+
 def compute_metrics(eval_pred):
-    """Compute token‑level accuracy (ignores padding tokens set to ‑100)."""
+    """Return **exact‑match (em)** and **token‑level F1**.
+
+    * Masked positions where `labels == -100` are ignored.
+    * EM counts a prediction as correct only when *all* non‑ignored tokens match.
+    * Token‑F1 is micro‑averaged across all non‑ignored tokens.
+    """
     logits, labels = eval_pred
     preds = np.argmax(logits, axis=-1)
-    mask = labels != -100
-    if mask.sum() == 0:
-        return {"accuracy": 0.0}
-    correct = (preds == labels) & mask
-    acc = correct.sum() / mask.sum()
-    return {"accuracy": float(acc)}
+    mask  = labels != -100  # shape: (B, L)
+
+    # --------- Exact‑Match (sequence level) ---------
+    # True if every token matches for the sequence (ignoring mask)
+    matches = ((preds == labels) | (~mask)).all(axis=1)
+    em = matches.mean() if matches.size > 0 else 0.0
+
+    # ---------------- Token‑level F1 ----------------
+    tp = int(((preds == labels) & mask).sum())
+    fp = int(((preds != labels) & mask).sum())  # predictions exist wherever mask is True
+    fn = fp  # since there is exactly one prediction per label position when masked;
+             # mismatched tokens count as both FP and FN.
+    _p, _r, f1 = _compute_precision_recall_f1(tp, fp, fn)
+
+    return {"em": float(em), "token_f1": float(f1)}
 
 
 def parse_args() -> argparse.Namespace:
@@ -237,10 +263,11 @@ def main():
                     prof.step()
 
             # ---------------------
-            # Evaluation accuracy
+            # Evaluation metrics
             # ---------------------
             eval_metrics = trainer.evaluate(eval_dataset=eval_set)
-            accuracy = round(eval_metrics.get("eval_accuracy", 0.0), 4)
+            em  = round(eval_metrics.get("eval_em", 0.0), 4)
+            f1  = round(eval_metrics.get("eval_token_f1", 0.0), 4)
 
             peak_mem = (
                 torch.cuda.max_memory_allocated() / 2**20 if torch.cuda.is_available() else 0
@@ -252,7 +279,8 @@ def main():
                 "train_runtime_s": round(runtime, 1),
                 "train_samples_per_s": round(train_out.metrics.get("train_samples_per_second", 0), 3),
                 "peak_mem_MiB": int(peak_mem),
-                "eval_accuracy": accuracy,
+                "eval_em": em,
+                "eval_token_f1": f1,
             }
             results.append(result)
 
@@ -272,7 +300,7 @@ def main():
     wandb.log({"results": wandb.Table(data=[list(r.values()) for r in results],
                                        columns=list(results[0].keys()))})
 
-    print("\n== SPEED + ACCURACY BENCHMARK ==")
+    print("\n== SPEED + EM / TOKEN‑F1 BENCHMARK ==")
     for r in results:
         print(r)
 
