@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """
-benchmark_attn_adapters.py
-=========================
-Compare fine‑tuning *speed* (and peak memory) for
+benchmark_attn_adapters.py (with Weights & Biases integration + accuracy evaluation)
+==============================================================================
+Compare fine‑tuning *speed*, *peak memory*, **and token‑level accuracy** for
 
 * **baseline** (no adapters, full‑precision)
 * **LoRA**      (fp16 weights + LoRA)
@@ -14,7 +14,7 @@ Only training‑throughput metrics are reported so runs stay fast.
 
 USAGE
 -----
-python benchmark_attn_adapters.py deepseek-ai/deepseek-coder-1.3b-base \
+python benchmark_attn_adapters_wandb_accuracy.py deepseek-ai/deepseek-coder-1.3b-base \
      configs/test.json runs/bench
 """
 from __future__ import annotations
@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse, os, json, time, gc, random
 from typing import Dict, List, Any
 
+import numpy as np
 import torch
 from torch.profiler import profile, record_function, ProfilerActivity
 from transformers import (
@@ -35,11 +36,30 @@ from transformers import (
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from datasets import load_dataset
 
+import wandb  # WandB integration
+
 # from attentions.pa import PagedAttention
 from attentions.mla import MultiHeadLatentAttention
 
-TRAIN_SIZE = 10000
+TRAIN_SIZE = 3000     # samples for throughput benchmark
+EVAL_SIZE  = 500     # separate samples for accuracy evaluation
 SEED       = 42
+
+
+# -----------------------
+# Metric: token accuracy
+# -----------------------
+def compute_metrics(eval_pred):
+    """Compute token‑level accuracy (ignores padding tokens set to ‑100)."""
+    logits, labels = eval_pred
+    preds = np.argmax(logits, axis=-1)
+    mask = labels != -100
+    if mask.sum() == 0:
+        return {"accuracy": 0.0}
+    correct = (preds == labels) & mask
+    acc = correct.sum() / mask.sum()
+    return {"accuracy": float(acc)}
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
@@ -59,31 +79,52 @@ def unload(model: torch.nn.Module):
 def custom_attention(impl: str, cfg):
     if impl == "mla":
         return MultiHeadLatentAttention(cfg, num_latents=64, dropout=cfg.attention_dropout)
-    if impl == "paged":
-        return PagedAttention(cfg, block_size=64)
     raise ValueError(impl)
+
 
 def main():
     args = parse_args()
     cfg: Dict[str, Any] = json.load(open(args.cfg_file))
 
+    # Create output folder early so WandB run can point to it
     os.makedirs(args.out_dir, exist_ok=True)
 
     random.seed(SEED); torch.manual_seed(SEED)
 
-    tok = AutoTokenizer.from_pretrained(args.model_id, use_fast=True)
-    if tok.pad_token_id is None:
-        tok.pad_token_id = tok.eos_token_id
-    tok.pad_token = tok.eos_token
+    # ---------------------------------------------------------
+    # Initialise Weights & Biases (one run logs all experiments)
+    # ---------------------------------------------------------
+    wandb_run = wandb.init(
+        project=cfg.get("wandb_project", "attn_bench"),
+        name=os.path.basename(args.out_dir),
+        config={
+            "model_id": args.model_id,
+            "train_size": TRAIN_SIZE,
+            "eval_size": EVAL_SIZE,
+            **cfg,
+        },
+        dir=args.out_dir,
+        job_type="benchmark",
+        reinit=True,
+    )
 
-    ds = load_dataset("Open-Orca/OpenOrca", split=f"train[:{TRAIN_SIZE}]")
+    tok = AutoTokenizer.from_pretrained(args.model_id, use_fast=True)
+    tok.pad_token = tok.eos_token
+    tok.padding_side = "right"
+
+    # -------------------------------------------------
+    # Dataset: split small TRAIN and EVAL subsets
+    # -------------------------------------------------
+    ds = load_dataset("Open-Orca/OpenOrca", split="train")
     max_len = cfg.get("max_seq_len", tok.model_max_length)
 
     def tok_fn(ex):
         text = f"{ex.get('system_prompt','')}\n{ex['question']}\n{ex['response']}".strip()
         return tok(text, truncation=True, max_length=max_len)
 
-    train_set = ds.map(tok_fn, remove_columns=ds.column_names)
+    train_set = ds.select(range(TRAIN_SIZE)).map(tok_fn, remove_columns=ds.column_names)
+    eval_set  = ds.select(range(TRAIN_SIZE, TRAIN_SIZE + EVAL_SIZE)).map(tok_fn, remove_columns=ds.column_names)
+
     collator = DataCollatorForLanguageModeling(tokenizer=tok, mlm=False, pad_to_multiple_of=8)
 
     attn_impls: List[str] = cfg.get("attn_impls", [])
@@ -97,117 +138,147 @@ def main():
             run_dir = os.path.join(args.out_dir, tag)
             os.makedirs(run_dir, exist_ok=True)
 
+            # ---------------------------
+            # Model & adapter setup block
+            # ---------------------------
             if adapter == "qlora":
-                # QLoRA → 4-bit + prepare_model_for_kbit_training
                 bnb_cfg = BitsAndBytesConfig(
                     load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
                     bnb_4bit_use_double_quant=True,
                     bnb_4bit_compute_dtype=torch.float16,
                 )
                 model = AutoModelForCausalLM.from_pretrained(
                     args.model_id, quantization_config=bnb_cfg, device_map="auto"
                 )
-                model = prepare_model_for_kbit_training(model)   # ← mandatory, before LoRA
-
+                model = prepare_model_for_kbit_training(model)
             elif adapter == "lora":
-                # LoRA → fp16 on GPU, fp32 on CPU
-                dtype = torch.float16 if torch.cuda.is_available() else torch.float32   # NEW
+                dtype = torch.float16 if torch.cuda.is_available() else torch.float32
                 model = AutoModelForCausalLM.from_pretrained(
                     args.model_id,
                     torch_dtype=dtype,
                     device_map="auto" if torch.cuda.is_available() else None,
                 )
-
             else:  # baseline
-                # Baseline → **full-precision fp32** everywhere        # NEW / CHANGED
                 model = AutoModelForCausalLM.from_pretrained(
                     args.model_id,
                     torch_dtype=torch.float32,
                     device_map="auto" if torch.cuda.is_available() else None,
                 )
 
-            # swap attention if custom
+            torch.cuda.reset_peak_memory_stats()
+
+            # Replace attention implementation if necessary
             if impl not in {"eager", "sdpa", "flash_attention_2", "flex_attention"}:
                 for layer in model.model.layers:
-                    ref = layer.self_attn.q_proj.weight          # reference tensor
+                    ref = layer.self_attn.q_proj.weight
                     new_attn = custom_attention(impl, model.config)
-
-                    # choose a safe fp dtype: keep ref.dtype if it is already fp;
-                    # otherwise fall back to fp16 (or bf16 if you prefer)
-                    target_dtype = (
-                        ref.dtype if ref.dtype.is_floating_point else torch.float16
-                    )
-
+                    target_dtype = ref.dtype if ref.dtype.is_floating_point else torch.float16
                     new_attn = new_attn.to(device=ref.device, dtype=target_dtype)
                     layer.self_attn = new_attn
             else:
                 model.config.attn_implementation = impl
 
-            # attach adapters if needed
+            # Attach (Q)LoRA adapters
             if adapter in {"lora", "qlora"}:
                 target_modules = [
                     "to_q_latent","to_k_token","to_v_token","out_latent",
                     "to_q_token","to_k_latent","to_v_latent","out_token",
                 ] if impl == "mla" else ["q_proj","k_proj","v_proj","o_proj"]
-                lora_cfg = LoraConfig(r=32, lora_alpha=16, lora_dropout=0.05, bias="none", target_modules=target_modules, task_type="CAUSAL_LM")
-                if adapter == "qlora":
-                    model = prepare_model_for_kbit_training(model)
+                lora_cfg = LoraConfig(
+                    r=32, lora_alpha=16, lora_dropout=0.05, bias="none",
+                    target_modules=target_modules, task_type="CAUSAL_LM"
+                )
                 model = get_peft_model(model, lora_cfg)
                 model.enable_input_require_grads()
 
             model.gradient_checkpointing_enable()
+            model.config.use_cache = False
 
-            # trainer
+            # -------------------
+            # Trainer definition
+            # -------------------
             trainer = Trainer(
                 model=model,
                 args=TrainingArguments(
                     output_dir=run_dir,
+                    run_name=tag,            # Shows up in WandB timeline
                     seed=SEED,
                     per_device_train_batch_size=4,
                     gradient_accumulation_steps=32,
                     num_train_epochs=1,
                     logging_steps=10,
                     save_total_limit=1,
-                    report_to="none",
+                    report_to="wandb",     # Activate WandB callback
                     evaluation_strategy="no",
                     gradient_checkpointing=True,
                     fp16=False,
+                    optim="paged_adamw_32bit",
                 ),
                 train_dataset=train_set,
+                eval_dataset=eval_set,
                 data_collator=collator,
+                compute_metrics=compute_metrics,
             )
 
+            # ---------------------
+            # Profiling + training
+            # ---------------------
             with profile(
                 activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
                 schedule=torch.profiler.schedule(wait=0, warmup=1, active=2, repeat=0),
                 on_trace_ready=torch.profiler.tensorboard_trace_handler(run_dir),
                 record_shapes=True,
                 with_stack=True,
-                with_flops=True
+                with_flops=True,
             ) as prof:
                 with record_function("train_with_profiler"):
                     start = time.time()
-                    train_metrics = trainer.train()
+                    train_out = trainer.train()
                     runtime = time.time() - start
                     prof.step()
 
-            peak_mem = torch.cuda.max_memory_allocated() / 2**20 if torch.cuda.is_available() else 0
+            # ---------------------
+            # Evaluation accuracy
+            # ---------------------
+            eval_metrics = trainer.evaluate(eval_dataset=eval_set)
+            accuracy = round(eval_metrics.get("eval_accuracy", 0.0), 4)
 
-            results.append({
+            peak_mem = (
+                torch.cuda.max_memory_allocated() / 2**20 if torch.cuda.is_available() else 0
+            )
+
+            result = {
                 "mode": adapter,
                 "impl": impl,
                 "train_runtime_s": round(runtime, 1),
-                "train_samples_per_s": round(train_metrics.metrics.get("train_samples_per_second", 0), 3),
+                "train_samples_per_s": round(train_out.metrics.get("train_samples_per_second", 0), 3),
                 "peak_mem_MiB": int(peak_mem),
-            })
+                "eval_accuracy": accuracy,
+            }
+            results.append(result)
+
+            # Log to WandB immediately for real‑time dashboard
+            wandb.log({f"metrics/{tag}": result}, step=len(results))
 
             unload(model)
 
-    # dump summary
-    json.dump(results, open(os.path.join(args.out_dir,"bench_results.json"),"w"), indent=2)
-    print("\n== SPEED BENCHMARK ==")
+    # -----------
+    # Final dump
+    # -----------
+    summary_path = os.path.join(args.out_dir, "bench_results.json")
+    json.dump(results, open(summary_path, "w"), indent=2)
+    wandb.save(summary_path)   # attach artefact to the run
+
+    # Optional: log aggregated results table
+    wandb.log({"results": wandb.Table(data=[list(r.values()) for r in results],
+                                       columns=list(results[0].keys()))})
+
+    print("\n== SPEED + ACCURACY BENCHMARK ==")
     for r in results:
         print(r)
+
+    wandb.finish()
 
 
 if __name__ == "__main__":
