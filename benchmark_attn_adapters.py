@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 benchmark_attn_adapters.py (with Weights & Biases integration + accuracy evaluation)
 ==============================================================================
@@ -142,6 +141,7 @@ def main():
             # Model & adapter setup block
             # ---------------------------
             if adapter == "qlora":
+                # QLoRA: 4-bit
                 bnb_cfg = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_quant_type="nf4",
@@ -153,6 +153,7 @@ def main():
                 )
                 model = prepare_model_for_kbit_training(model)
             elif adapter == "lora":
+                # LoRA
                 dtype = torch.float16 if torch.cuda.is_available() else torch.float32
                 model = AutoModelForCausalLM.from_pretrained(
                     args.model_id,
@@ -195,9 +196,6 @@ def main():
             model.gradient_checkpointing_enable()
             model.config.use_cache = False
 
-            # -------------------
-            # Trainer definition
-            # -------------------
             trainer = Trainer(
                 model=model,
                 args=TrainingArguments(

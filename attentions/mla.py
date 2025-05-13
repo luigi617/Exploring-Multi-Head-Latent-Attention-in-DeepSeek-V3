@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 """
 attentions/mla.py
-Implementation of **Multi‑Head Latent Attention (MLA)** – a bidirectional
+Implementation of Multi‑Head Latent Attention (MLA). a bidirectional
 token‑latent block that can be swapped into HF decoder layers.
 
-Latents ← Tokens :  to_q_latent · to_k_token · to_v_token · out_latent  
-Tokens ← Latents :  to_q_token · to_k_latent · to_v_latent · out_token
+Latents <- Tokens :  to_q_latent, to_k_token, to_v_token, out_latent  
+Tokens <- Latents :  to_q_token, to_k_latent, to_v_latent, out_token
 """
 from __future__ import annotations
 from typing import Tuple, Optional
@@ -32,61 +32,55 @@ class MultiHeadLatentAttention(nn.Module):
         self.num_latents  = num_latents
         self.dropout_p    = dropout
 
-        # ---------- projections (LoRA‑friendly: each direction owns its matrix)
         linear = lambda: nn.Linear(self.hidden_size, self.hidden_size, bias=False)
 
-        # latents ← tokens
         self.to_q_latent = linear()
         self.to_k_token  = linear()
         self.to_v_token  = linear()
         self.out_latent  = linear()
 
-        # tokens ← latents
         self.to_q_token  = linear()
         self.to_k_latent = linear()
         self.to_v_latent = linear()
         self.out_token   = linear()
 
-        # learnable latent vectors (L × D)
+        # learnable latent vectors (L×D)
         self.latents = nn.Parameter(torch.randn(num_latents, self.hidden_size))
 
         self.attn_drop = nn.Dropout(dropout)
         self.proj_drop = nn.Dropout(dropout)
 
-    # -------------------------------------------------------------------- helpers
     def _shape(self, x: torch.Tensor, b: int) -> torch.Tensor:
         # (B, S, H*D) → (B, H, S, D)
         return x.view(b, -1, self.num_heads, self.head_dim).transpose(1, 2)
 
     def _attention(self, q, k, v, mask=None):
         # q,k,v : (B, H, S_q, D)
-        attn = (q @ k.transpose(-2, -1)) * self.scale            # (B, H, S_q, S_k)
+        attn = (q @ k.transpose(-2, -1)) * self.scale  # (B, H, S_q, S_k)
 
         if mask is not None:
-            # ---- sanitize mask to (B, 1, 1, S_k) ----
-            if mask.dim() == 4:                  # (B, 1, S_q, S_k) from HF
-                mask = mask[..., -1:, :]         # keep only padding row
+            if mask.dim() == 4:                  # (B, 1, S_q, S_k)
+                mask = mask[..., -1:, :]
             if mask.dim() == 3:                  # (B, 1, S_k)
                 mask = mask[:, :, None, :]
             if mask.dim() == 2:                  # (B, S_k)
                 mask = mask[:, None, None, :]
-            # mask is now broadcast‑compatible with attn
+            # mask now broadcast‑compatible w attn
             attn = attn.masked_fill(mask == 0, float("-inf"))
 
         attn = F.softmax(attn, dim=-1)
         attn = self.attn_drop(attn)
         return attn @ v                          # (B, H, S_q, D)
 
-    # -------------------------------------------------------------------- forward
     def forward(
         self,
-        hidden_states: torch.Tensor,                 # (B, S, D)
+        hidden_states: torch.Tensor, # (B, S, D)
         attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,   # accepted, unused
-        past_key_value: Optional[Tuple] = None,      # cache not yet implemented
+        position_ids: Optional[torch.Tensor] = None,
+        past_key_value: Optional[Tuple] = None, # no cache implemneation yet
         output_attentions: bool = False,
         use_cache: bool = False,
-        **kwargs,                               # catches layer_head_mask, etc.
+        **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple]]:
 
         b, s, _ = hidden_states.size()
@@ -99,7 +93,7 @@ class MultiHeadLatentAttention(nn.Module):
             .to(target_dtype)                                \
             .unsqueeze(0).expand(b, -1, -1)                  # (B, L, D)
 
-        # --------------- Stage 1 – latents attend over **tokens**
+        # latents attend over token
         q_l = self._shape(self.to_q_latent(latent_tokens), b)  # (B, H, L, D)
         k_t = self._shape(self.to_k_token(hidden_states), b)   # (B, H, S, D)
         v_t = self._shape(self.to_v_token(hidden_states), b)
@@ -112,7 +106,7 @@ class MultiHeadLatentAttention(nn.Module):
         )
         latents_enriched = self.out_latent(latents_enriched)   # (B, L, D)
 
-        # --------------- Stage 2 – tokens attend over **enriched latents**
+        # tokens attend over enriched latents
         q_t = self._shape(self.to_q_token(hidden_states), b)   # (B, H, S, D)
         k_l = self._shape(self.to_k_latent(latents_enriched), b)
         v_l = self._shape(self.to_v_latent(latents_enriched), b)

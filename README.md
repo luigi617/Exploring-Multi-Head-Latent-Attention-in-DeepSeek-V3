@@ -1,86 +1,166 @@
-# Exploring Multi‑Head Latent Attention in DeepSeek‑Coder
-*A systematic benchmark of LoRA, QLoRA & baseline fine‑tuning across multiple attention kernels*
+# HPML Final Project: Exploring Multi‑Head Latent Attention in DeepSeek-Coder
+
+A systematic benchmark of LoRA, QLoRA & baseline fine‑tuning across multiple attention kernels.
+
+---
+## Team Information
+- **Members**:
+  - Luigi Liu (ll3840)
+  - Yixiao Li (yl5760)
+  - Louis Zheng (lz2834)
 
 ---
 
-## ✨ Project Motivation
-Large‑language‑model fine‑tuning is often constrained by **GPU memory**, **training speed**, and **engineering complexity**. This project delivers a framework to **measure the real‑world trade‑offs** between adapter techniques (Baseline, LoRA, QLoRA) under a family of attention implementations:
+## Problem Statement
+
+Large‑language‑model fine‑tuning is often constrained by **GPU memory**, **training speed**, and **engineering complexity**. This project benchmarks the real‑world trade‑offs of three adapter techniques (Baseline, LoRA, QLoRA) across a family of attention implementations:
 
 * **Eager / SDPA** (PyTorch standard)
 * **FlashAttention‑2**
-* **Multi‑Head Latent Attention (MLA)**
+* **Multi‑Head Latent Attention (MLA)**
 
-All experiments use **DeepSeek‑Coder‑1.3B** and a slice of **OpenOrca** for fast iteration during the mid‑point review. We are *not* re‑implementing kernels—just benchmarking.
+All experiments use **DeepSeek‑Coder‑1.3B** and a slice of **OpenOrca** for fast iteration—no kernel re‑implementation, only benchmark comparisons.
 
 ---
 
-## 🗂 Repository Outline
+## Model Description
+
+- **Base Architecture**  
+  - **Model:** `deepseek-ai/deepseek-coder-1.3b-base` (1.3 B-parameter causal LM)  
+  - **Framework:** PyTorch + Hugging Face Transformers (`AutoModelForCausalLM`, `AutoTokenizer`)
+
+- **Quantization & Adapters**  
+  - **QLoRA (4-bit) Setup:**  
+    - `BitsAndBytesConfig` with NF4 quantization, double-quant, compute in FP16  
+    - `prepare_model_for_kbit_training()` to enable low-bit fine-tuning  
+  - **LoRA Adapter:**  
+    - Rank `r=32`, α=16, dropout=0.05, no bias  
+    - Target modules vary by attention type (standard Q/K/V/O projections vs. MLA latent/token projections)
+
+- **Attention Implementations**  
+  - **Built-In:**  
+    - Eager (PyTorch), SDPA, FlashAttention-2, Flex  
+  - **Custom:**  
+    - **MultiHeadLatentAttention (MLA):**  
+      - Projects Q/K/V through learned latent tokens  
+      - Quantized to 4-bit  
+    - **PagedAttention:**  
+      - Block-sparse attention (block size 64)  
+      - Quantized to 4-bit  
+  - Replacement is done layer-by-layer via `replace_attention_with_quantized()`.
+
+- **Training & Profiling**  
+  - **Hugging Face Trainer:**  
+    - FP16, `gradient_accumulation_steps=32`, 1 epoch, gradient checkpointing  
+  - **Profiling:**  
+    - `torch.profiler` (CPU + CUDA) → Chrome trace + summary of top ops  
+  - **Logged Metrics:**  
+    - Training runtime, samples/sec (train/eval/gen), peak GPU memory  
+    - Train/val loss, perplexity, ROUGE-1/2/L, trainable & total parameter counts
+
+- **Data Pipeline**  
+  - **Dataset:** Open-Orca conversational data (100 train / 20 val)  
+  - **Tokenization:** Custom prompt–response concatenation, truncation to `max_seq_len`  
+  - **Collation:** `DataCollatorForLanguageModeling` (causal LM style)
+
+
+---
+
+## Repository Structure
+
 ```text
 .
 ├── attentions/                 # Custom kernels (mla.py)
-├── configs/                    # JSON experiment configs (seq‑len, kernels, …)
-├── deepseek‑models/            # Git sub‑module with patched DeepSeek‑Coder‑1.3B
-├── benchmark_attn_qlora.py     # QLoRA       benchmark script
-├── benchmark_wandb.py          # Thin wrapper that streams metrics to Weights & Biases
-├── finetune_deepseek_attn.py   # One‑off fine‑tune helper (no benchmarking)
-├── finetune_wandb.py           # Same as above but logs to wandb
+├── configs/                    # JSON experiment configs
+├── deepseek-models/            # Git sub-module with patched DeepSeek‑Coder‑1.3B
+├── wandb                       # stores wandb logs and results
+├── benchmark_attn_qlora.py     # QLoRA benchmark script
+├── finetune_wandb.py           # Logs metrics to Weights & Biases
 ├── requirements.txt            # Python dependencies
-└── README.md                   # ← this file
+└── README.md                   # This file
 ```
 
 ---
 
-## ⚙️ Setup & Requirements
+## Final Results Summary
+
+| Mode      | Kernel       | Train Time (s) ↓ | Samples/s ↑ | Peak Mem (MiB) ↓ |
+| --------- | ------------ | ---------------- | ----------- | ---------------- |
+| Baseline  | eager        | 246.0            | 4.100       | 14 800           |
+| Baseline  | sdpa         | 246.1            | 4.100       | 14 800           |
+| Baseline  | flash-attn-2 | 246.2            | 4.090       | 14 800           |
+| Baseline  | MLA          | 198.5            | 5.105       | 14 800           |
+| **LoRA**  | eager        | 237.9            | 4.207       | 8 480            |
+| **LoRA**  | sdpa         | 238.0            | 4.208       | 8 480            |
+| **LoRA**  | flash-attn-2 | 238.1            | 4.206       | 8 480            |
+| **LoRA**  | MLA          | 184.2            | 5.442       | 8 480            |
+| **QLoRA** | eager        | 827.5            | 1.209       | 2 950            |
+| **QLoRA** | sdpa         | 827.5            | 1.209       | 2 950            |
+| **QLoRA** | flash-attn-2 | 827.7            | 1.209       | 2 950            |
+| **QLoRA** | MLA          | 481.4            | 2.079       | 3 950            |
+
+
+W&B [public report](https://api.wandb.ai/links/louiszh-columbia-university/5mknyy8s) of results
+
+---
+
+## Observations
+
+* **MLA** is consistently the fastest and most efficient for training speed across all modes.
+* **LoRA + fp16** offers an excellent balance: fast training with significant memory savings (\~43% less than baseline).
+* **QLoRA (4-bit)** reduces memory usage the most (down to \~2 950 MiB), but suffers from lower throughput—except when using MLA, which nearly doubles its speed while remaining memory-efficient.
+* The choice between eager/SDPA and FlashAttention‑2 has minimal impact on performance unless paired with MLA, which clearly boosts both speed and throughput.
+
+---
+
+---
+
+## Reproducibility Instructions
+
+### Requirements
+
+Install Python dependencies:
 ```bash
-# 1 · Install deps (T4 GPU, Deep Learning VM with CUDA 12.1+, M126, Debian 11, Python 3.10)
 pip install -r requirements.txt
 ```
 
 ---
 
-## 🚀 How to Run
+### Benchmark QLoRA
+
 ```bash
-python benchmark_attn_qlora.py deepseek-ai/deepseek-coder-1.3b-base configs/test.json runs/bench
+python benchmark_attn_qlora.py \
+  deepseek-ai/deepseek-coder-1.3b-base \
+  configs/test.json \
+  runs/bench
 ```
 
-###  Stream metrics to Weights & Biases
-```bash
-export WANDB_API_KEY=<your‑key>
+---
 
+### Stream metrics to Weights & Biases
+
+```bash
+export WANDB_API_KEY=<your-key>
 pip install wandb
 wandb login
 
-python finetune_wandb.py deepseek-ai/deepseek-coder-1.3b-base configs/test.json runs/bench
+python finetune_wandb.py \
+  deepseek-ai/deepseek-coder-1.3b-base \
+  configs/test.json \
+  runs/bench
 ```
 
 ---
 
-## Results
-| Mode      | Kernel            | Train t ↓ | Sample/s ↑ | Peak MiB ↓ | 
-|-----------|-------------------|-----------|------------|------------|
-| **LoRA**  | eager             | 24.5 s    | 4.116      | 7226       |
-| **LoRA**  | sdpa              | 24.9 s    | 4.063      | 7226       |
-| **LoRA**  | flash‑attn‑2      | 24.6 s    | 4.100      | 7226       |
-| **LoRA**  | MLA               | 20.7 s    | 4.910      | 7226       |
-| **QLoRA** | eager             | 88.0 s    | 1.139      | 7226       |
-| **QLoRA** | sdpa              | 87.8 s    | 1.143      | 7226       |
-| **QLoRA** | flash‑attn‑2      | 87.8 s    | 1.141      | 7226       |
-| **QLoRA** | MLA               | 77.6 s    | 1.293      | 8294       |
+### Quickstart: Minimum Reproducible Result
 
----
+To reproduce our minimum reported result, run:
 
-## 🔍 Observations (Mid‑point)
-* LoRA + MLA is fastest: 4.91 samples/sec, 20.7s runtime — due to low-rank updates + efficient MLA attention.
-* LoRA is ~4× faster than QLoRA: LoRA avoids quantization overhead; QLoRA requires dequantization during training.
-* QLoRA + MLA is fastest QLoRA setup: Best among QLoRA variants, but ~15% higher memory usage (8294 MiB).
-* Tradeoff: QLoRA saves memory via quantization, but training is significantly slower than LoRA.
+```bash
+pip install -r requirements.txt
 
----
-
-## 🔄 Reproduce & Extend
-1. **Change kernels** – edit `configs/*.json` → "attn_impls" : ["eager", "flash_attention_2", …].
-2. **Bigger data**    – bump `TRAIN_SIZE`, `VAL_SIZE`, or point to a HF dataset split.
-3. **More epochs**    – adjust `num_train_epochs` in the config or script.
-4. **Distributed**    – pass `--deepspeed ds_config.json`
-
----
+python benchmark_attn_qlora.py \
+  deepseek-ai/deepseek-coder-1.3b-base \
+  configs/test.json \
+  runs/bench
+```
